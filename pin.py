@@ -39,32 +39,36 @@ TEAM_COLORS = {
 
 TEAMS_ORDER = ["赤", "青", "白", "ゲームマスター"]
 
-# --- サイズ調整パラメータ ---
 PIN_RADIUS = 6.5  # 元の10から6.5割（0.65倍）へ変更
 PIN_OUTLINE_WIDTH = 2
 
+# === 高速化：Bot起動時に画像とフォントを1回だけメモリへ読み込む ===
+BASE_DIR = os.path.dirname(__file__)
+
+_orig_img = Image.open(os.path.join(BASE_DIR, "Rosenzu.png")).convert("RGBA")
+_target_alpha = int(255 * 0.7)
+_new_alpha = Image.new('L', _orig_img.size, color=_target_alpha)
+_orig_img.putalpha(_new_alpha)
+
+PRELOADED_MAP = Image.new("RGBA", _orig_img.size, (255, 255, 255, 255))
+PRELOADED_MAP.paste(_orig_img, (0, 0), _orig_img)
+
+font_path = os.path.join(BASE_DIR, 'fonts', 'NotoSansJP-Regular.ttf')
+try:
+    PRELOADED_FONT = ImageFont.truetype(font_path, 13)  # 元の16から8割（13pt）へ変更
+except Exception:
+    PRELOADED_FONT = ImageFont.load_default()
+
+
 async def send_map_with_pins(channel, participants):
     try:
-        orig_img = Image.open("Rosenzu.png").convert("RGBA")
-        orig_w, orig_h = orig_img.size
-
-        target_alpha = int(255 * 0.7)
-        new_alpha = Image.new('L', orig_img.size, color=target_alpha)
-        orig_img.putalpha(new_alpha)
-        img = Image.new("RGBA", (orig_w, orig_h), (255, 255, 255, 255))
-        img.paste(orig_img, (0, 0), orig_img)
-
+        # メモリ上のベース画像から高速コピー
+        img = PRELOADED_MAP.copy()
         draw = ImageDraw.Draw(img)
-        scale_x, scale_y = 1.0, 1.0
+
         scaled_radius = PIN_RADIUS
         outline_extra = PIN_OUTLINE_WIDTH
-
-        font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansJP-Regular.ttf')
-        try:
-            # フォントサイズを16から8割（13pt）へ変更
-            font = ImageFont.truetype(font_path, 13) 
-        except Exception:
-            font = ImageFont.load_default()
+        font = PRELOADED_FONT
 
         station_to_users = {}
         report_buckets = {t: [] for t in TEAMS_ORDER}
@@ -90,8 +94,8 @@ async def send_map_with_pins(channel, participants):
 
         # --- 駅ピンの描画 ---
         for st_name, users in station_to_users.items():
-            x = int(STATION_COORDINATES[st_name][0] * scale_x)
-            y = int(STATION_COORDINATES[st_name][1] * scale_y)
+            x = int(STATION_COORDINATES[st_name][0])
+            y = int(STATION_COORDINATES[st_name][1])
             pin_color = TEAM_COLORS["重複"] if len(users) > 1 else TEAM_COLORS.get(users[0]["team"], (255, 255, 255))
 
             draw.ellipse((x - (scaled_radius + outline_extra), y - (scaled_radius + outline_extra), 
@@ -113,13 +117,20 @@ async def send_map_with_pins(channel, participants):
             for t_name, txt in display_lines:
                 text_color = TEAM_COLORS.get(t_name, (255, 255, 255))
                 text_pos = (x + scaled_radius + 5, current_y)
-                for dx, dy in [(-1,-1),(1,-1),(-1,1),(1,1),(0,-1),(0,1),(-1,0),(1,0)]:
-                    draw.text((text_pos[0]+dx, text_pos[1]+dy), txt, fill=(0,0,0), font=font)
-                draw.text(text_pos, txt, fill=text_color, font=font)
-                current_y += 14  # 行間幅もフォントに合わせて18pxから14pxへ変更
+                
+                # stroke機能で軽快にフチ取り処理
+                draw.text(
+                    text_pos, 
+                    txt, 
+                    fill=text_color, 
+                    font=font, 
+                    stroke_width=1, 
+                    stroke_fill=(0, 0, 0)
+                )
+                current_y += 14
 
         out_buf = io.BytesIO()
-        img.save(out_buf, format='PNG')
+        img.save(out_buf, format='PNG', compress_level=1)
         out_buf.seek(0)
 
         total_users = sum(len(v) for v in report_buckets.values())
