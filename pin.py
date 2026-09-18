@@ -4,26 +4,28 @@ from PIL import Image, ImageDraw, ImageFont
 import discord
 from station_data import STATION_COORDINATES
 
-# DiscordユーザーID (18桁の数字) でユーザー・チームを定義
+# DiscordユーザーID (18-19桁の数字) でユーザー・チームを定義
 USER_CONFIG = {
+    # 赤チーム
     "1279023323950350371": {"team": "赤", "real_name": "茂野"},
     "1549752859581481041": {"team": "赤", "real_name": "小林"},
     "1549709823744933901": {"team": "赤", "real_name": "仁田"},
     "1073580722247450704": {"team": "赤", "real_name": "二宮"},
     "1203962597351755806": {"team": "赤", "real_name": "上保"},
 
+    # 青チーム
     "1047412751259140187": {"team": "青", "real_name": "井原"},
     "1550112124930490400": {"team": "青", "real_name": "小澤"},
     "1550437565549649924": {"team": "青", "real_name": "伊藤"},
     "1341744353978355837": {"team": "青", "real_name": "高木"},
-    "": {"team": "青", "real_name": "茂野"},
 
+    # 白チーム
     "1534202522896699592": {"team": "白", "real_name": "猪狩"},
     "1352999265231966281": {"team": "白", "real_name": "工藤"},
     "777050829571227688": {"team": "白", "real_name": "遠藤"},
     "1550265450502291607": {"team": "白", "real_name": "村山"},
-    "": {"team": "白", "real_name": "茂野"},
     
+    # ゲームマスター
     "1550079091225534536": {"team": "ゲームマスター", "real_name": "成田"},
 }
 
