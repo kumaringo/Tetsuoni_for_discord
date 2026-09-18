@@ -4,21 +4,26 @@ from PIL import Image, ImageDraw, ImageFont
 import discord
 from station_data import STATION_COORDINATES
 
+# DiscordユーザーID (18桁の数字) でユーザー・チームを定義
 USER_CONFIG = {
-    "上山of鉄オタ": {"team": "赤", "real_name": "上山"},
-    "SKM交通": {"team": "白", "real_name": "佐久間"},
-    "しみチョコ〜にわとり〜": {"team": "赤", "real_name": "清水"},
-    "坂本 大和": {"team": "青", "real_name": "坂本"},
-    "OR（209推し）": {"team": "青", "real_name": "大塚"},
-    "Ryu": {"team": "白", "real_name": "岡"},
+    "123456789012345678": {"team": "赤", "real_name": "上山"},
+    "234567890123456789": {"team": "白", "real_name": "佐久間"},
+    "345678901234567890": {"team": "赤", "real_name": "清水"},
+    "456789012345678901": {"team": "青", "real_name": "坂本"},
+    "567890123456789012": {"team": "青", "real_name": "大塚"},
+    "678901234567890123": {"team": "白", "real_name": "岡"},
+    "789012345678901234": {"team": "ゲームマスター", "real_name": "GM"},
 }
 
 TEAM_COLORS = {
     "赤": (255, 0, 0),
     "青": (0, 191, 255),
     "白": (255, 255, 255),
+    "ゲームマスター": (255, 255, 0),  # 黄色
     "重複": (0, 0, 0)
 }
+
+TEAMS_ORDER = ["赤", "青", "白", "ゲームマスター"]
 
 PIN_RADIUS = 10
 PIN_OUTLINE_WIDTH = 2
@@ -46,16 +51,20 @@ async def send_map_with_pins(channel, participants):
             font = ImageFont.load_default()
 
         station_to_users = {}
-        report_buckets = {"赤": [], "青": [], "白": []}
+        report_buckets = {t: [] for t in TEAMS_ORDER}
 
-        for username, data in participants.items():
+        for user_id, data in participants.items():
             st_name = data.get("station")
             if not st_name:
                 continue
 
-            config = USER_CONFIG.get(username, {"team": "白", "real_name": username})
+            default_name = data.get("display_name", "ゲスト")
+            config = USER_CONFIG.get(str(user_id), {"team": "白", "real_name": default_name})
             team = config["team"]
             real_name = config["real_name"]
+
+            if team not in report_buckets:
+                report_buckets[team] = []
             report_buckets[team].append(f"「{team}:{real_name}」: {st_name}")
 
             if st_name in STATION_COORDINATES:
@@ -63,6 +72,7 @@ async def send_map_with_pins(channel, participants):
                     station_to_users[st_name] = []
                 station_to_users[st_name].append({"team": team, "char": real_name[0]})
 
+        # --- 駅ピンの描画 ---
         for st_name, users in station_to_users.items():
             x = int(STATION_COORDINATES[st_name][0] * scale_x)
             y = int(STATION_COORDINATES[st_name][1] * scale_y)
@@ -72,13 +82,14 @@ async def send_map_with_pins(channel, participants):
                           x + (scaled_radius + outline_extra), y + (scaled_radius + outline_extra)), fill=(0, 0, 0))
             draw.ellipse((x - scaled_radius, y - scaled_radius, x + scaled_radius, y + scaled_radius), fill=pin_color)
             
-            team_summary = {"赤": [], "青": [], "白": []}
+            team_summary = {t: [] for t in TEAMS_ORDER}
             for u in users:
-                team_summary[u['team']].append(u['char'])
+                if u['team'] in team_summary:
+                    team_summary[u['team']].append(u['char'])
 
             display_lines = []
-            for t in ["赤", "青", "白"]:
-                if team_summary[t]:
+            for t in TEAMS_ORDER:
+                if team_summary.get(t):
                     line_txt = f"{t}:{ ''.join(team_summary[t]) }"
                     display_lines.append((t, line_txt))
 
@@ -95,9 +106,10 @@ async def send_map_with_pins(channel, participants):
         img.save(out_buf, format='PNG')
         out_buf.seek(0)
 
-        report_text = f"🚨 参加者 {len(report_buckets['赤']) + len(report_buckets['青']) + len(report_buckets['白'])} 人のデータ 🚨\n"
-        for t in ["赤", "青", "白"]:
-            if report_buckets[t]:
+        total_users = sum(len(v) for v in report_buckets.values())
+        report_text = f"🚨 参加者 {total_users} 人のデータ 🚨\n"
+        for t in TEAMS_ORDER:
+            if report_buckets.get(t):
                 report_text += "\n" + "\n".join(report_buckets[t])
 
         discord_file = discord.File(fp=out_buf, filename="map.png")

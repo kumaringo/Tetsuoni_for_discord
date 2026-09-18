@@ -5,9 +5,11 @@ async def handle_registration_logic(message, participant_data, users_participate
     text = message.content.strip()
 
     chat_id = message.channel.id
-    username = message.author.display_name
+    user_id = str(message.author.id)
+    display_name = message.author.display_name
 
-    config = USER_CONFIG.get(username, {"team": "白", "real_name": username})
+    # IDからユーザー設定を取得（未登録の場合は白チーム・表示名でフォールバック）
+    config = USER_CONFIG.get(user_id, {"team": "白", "real_name": display_name})
     team = config["team"]
     real_name = config["real_name"]
 
@@ -15,11 +17,14 @@ async def handle_registration_logic(message, participant_data, users_participate
         participant_data[chat_id] = {}
         users_participated[chat_id] = set()
 
-    is_update = username in participant_data[chat_id]
+    is_update = user_id in participant_data[chat_id]
 
     if text in STATION_COORDINATES:
-        participant_data[chat_id][username] = {"station": text}
-        users_participated[chat_id].add(username)
+        participant_data[chat_id][user_id] = {
+            "station": text,
+            "display_name": display_name
+        }
+        users_participated[chat_id].add(user_id)
         display_text = text
     else:
         await message.channel.send(f"「{text}」は駅名リストにありません。")
