@@ -39,7 +39,8 @@ TEAM_COLORS = {
 
 TEAMS_ORDER = ["赤", "青", "白", "ゲームマスター"]
 
-PIN_RADIUS = 10
+# --- サイズ調整パラメータ ---
+PIN_RADIUS = 6.5  # 元の10から6.5割（0.65倍）へ変更
 PIN_OUTLINE_WIDTH = 2
 
 async def send_map_with_pins(channel, participants):
@@ -60,7 +61,8 @@ async def send_map_with_pins(channel, participants):
 
         font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansJP-Regular.ttf')
         try:
-            font = ImageFont.truetype(font_path, 16) 
+            # フォントサイズを16から8割（13pt）へ変更
+            font = ImageFont.truetype(font_path, 13) 
         except Exception:
             font = ImageFont.load_default()
 
@@ -114,7 +116,7 @@ async def send_map_with_pins(channel, participants):
                 for dx, dy in [(-1,-1),(1,-1),(-1,1),(1,1),(0,-1),(0,1),(-1,0),(1,0)]:
                     draw.text((text_pos[0]+dx, text_pos[1]+dy), txt, fill=(0,0,0), font=font)
                 draw.text(text_pos, txt, fill=text_color, font=font)
-                current_y += 18 
+                current_y += 14  # 行間幅もフォントに合わせて18pxから14pxへ変更
 
         out_buf = io.BytesIO()
         img.save(out_buf, format='PNG')
