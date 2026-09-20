@@ -62,7 +62,9 @@ TEAMS_ORDER = ["赤", "青", "白", "ゲームマスター"]
 PIN_RADIUS = 6.5
 PIN_OUTLINE_WIDTH = 2
 
-# === 3. 状態管理変数 ===
+# === 3. 環境変数と状態管理変数 ===
+REQUIRED_USERS = int(os.getenv("REQUIRED_USERS", "14"))
+
 participants = {}    # 参加者の入力データ辞書
 is_accepting = True   # 受付フラグ
 
@@ -84,7 +86,7 @@ except Exception:
     PRELOADED_FONT = ImageFont.load_default()
 
 
-# === 5. マップ生成ロジック ===
+# === 5. マップ生成・出力・リセット共通処理 ===
 def _generate_map_image_sync(participants_data):
     img = PRELOADED_MAP.copy()
     draw = ImageDraw.Draw(img)
@@ -178,6 +180,27 @@ async def send_map_with_pins(channel, participants_data):
         await channel.send(f"描画エラー: {e}")
 
 
+async def finish_and_reset_game(channel, is_auto=False):
+    """手動(/finish)および自動(規定人数達成)で共通利用する終了・出力・リセット処理"""
+    global is_accepting, participants
+
+    if not participants:
+        await channel.send("⚠️ まだ入力データがありません。")
+        return
+
+    if is_auto:
+        await channel.send(f"🎉 規定人数の {REQUIRED_USERS} 人に達しました！マップを集計して出力します...")
+    else:
+        await channel.send("🗺️ 手動指示によりマップを集計して出力します...")
+
+    await send_map_with_pins(channel, participants)
+
+    # データをリセットし、新しい受付を開始
+    participants.clear()
+    is_accepting = True
+    await channel.send("✨ 記録を自動リセットしました！新しいゲームの受付を開始します（1人目から登録可能です）。")
+
+
 # === 6. Discord Botイベント処理 ===
 intents = discord.Intents.default()
 intents.message_content = True
@@ -186,6 +209,7 @@ client = discord.Client(intents=intents)
 @client.event
 async def on_ready():
     print(f"[INFO] ログインしました: {client.user}")
+    print(f"[INFO] 設定規定人数 (REQUIRED_USERS): {REQUIRED_USERS} 人")
 
 @client.event
 async def on_message(message):
@@ -197,29 +221,19 @@ async def on_message(message):
     # 全角スラッシュを半角にし、大文字を小文字に変換して前後空白を除去
     content = message.content.strip().replace("／", "/").lower()
 
-    # --- コマンド1: /finish （マップ出力＆データを自動リセットして次の新しい受付を開始） ---
+    # --- コマンド1: /finish （手動でマップ出力＆リセット実行） ---
     if content == "/finish":
-        if not participants:
-            await message.channel.send("⚠️ まだ入力データがありません。")
-            return
-
-        await message.channel.send("🗺️ マップを集計して出力します...")
-        await send_map_with_pins(message.channel, participants)
-
-        # データをリセットし、新しい受付を即座に開始
-        participants.clear()
-        is_accepting = True
-        await message.channel.send("✨ 記録を自動リセットしました！新しいゲームの受付を開始します（1人目から登録可能です）。")
+        await finish_and_reset_game(message.channel, is_auto=False)
         return
 
-    # --- コマンド2: /reset （マップ出力なしで記録をリセットして1人目からやり直す） ---
+    # --- コマンド2: /reset （マップ出力なしで記録リセット） ---
     if content == "/reset":
         participants.clear()
         is_accepting = True
         await message.channel.send("🔄 今までの記録をリセットしました！1人目からの集計をやり直します。")
         return
 
-    # --- コマンド3: /remaining （未入力者リスト出力：ゲームマスターを含む全チーム対象） ---
+    # --- コマンド3: /remaining （未入力者リスト出力） ---
     if content == "/remaining":
         unsubmitted_by_team = {t: [] for t in TEAMS_ORDER}
         
@@ -260,7 +274,11 @@ async def on_message(message):
             "station": raw_content,
             "display_name": display_name
         }
-        await message.channel.send(f"✅ {message.author.mention} さんの駅を「{raw_content}」で受け付けました！（現在 {len(participants)} 人）")
+        await message.channel.send(f"✅ {message.author.mention} さんの駅を「{raw_content}」で受け付けました！（現在 {len(participants)} / {REQUIRED_USERS} 人）")
+
+        # 条件（自動）: 規定人数（REQUIRED_USERS）に達したら自動でマップ出力＆リセット実行
+        if len(participants) >= REQUIRED_USERS:
+            await finish_and_reset_game(message.channel, is_auto=True)
 
 
 # === 7. 起動処理 ===
