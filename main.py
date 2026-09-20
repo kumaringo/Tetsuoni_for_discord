@@ -15,12 +15,10 @@ def home():
     return "Bot is running!"
 
 def run_http_server():
-    # Renderが割り当てるポート番号を取得（デフォルト: 8080）
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
-    # Webサーバーを別スレッドでバックグラウンド起動
     t = Thread(target=run_http_server)
     t.daemon = True
     t.start()
@@ -196,37 +194,39 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    content = message.content.strip()
+    # 全角スラッシュを半角にし、大文字を小文字に変換して前後空白を除去
+    content = message.content.strip().replace("／", "/").lower()
 
-    # --- コマンド1: /finish （受付停止＆ピン挿し地図出力） ---
+    # --- コマンド1: /finish （マップ出力＆データを自動リセットして次の新しい受付を開始） ---
     if content == "/finish":
-        if not is_accepting:
-            await message.channel.send("⚠️ 既に受付は停止しています。")
+        if not participants:
+            await message.channel.send("⚠️ まだ入力データがありません。")
             return
 
-        is_accepting = False
-        await message.channel.send("🛑 受付を停止しました。マップを集計して出力します...")
+        await message.channel.send("🗺️ マップを集計して出力します...")
         await send_map_with_pins(message.channel, participants)
+
+        # データをリセットし、新しい受付を即座に開始
+        participants.clear()
+        is_accepting = True
+        await message.channel.send("✨ 記録を自動リセットしました！新しいゲームの受付を開始します（1人目から登録可能です）。")
         return
 
-    # --- コマンド2: /reset （記録リセット＆受付再開・地図出力なし） ---
+    # --- コマンド2: /reset （マップ出力なしで記録をリセットして1人目からやり直す） ---
     if content == "/reset":
         participants.clear()
         is_accepting = True
-        await message.channel.send("🔄 今までの記録をリセットしました！1人目からの集計を開始します。")
+        await message.channel.send("🔄 今までの記録をリセットしました！1人目からの集計をやり直します。")
         return
 
-    # --- コマンド3: /yet （未入力者リスト出力） ---
-    if content == "/yet":
-        unsubmitted_by_team = {t: [] for t in TEAMS_ORDER if t != "ゲームマスター"}
+    # --- コマンド3: /left （未入力者リスト出力：ゲームマスターを含む全チーム対象） ---
+    if content == "/left":
+        unsubmitted_by_team = {t: [] for t in TEAMS_ORDER}
         
         for user_id, config in USER_CONFIG.items():
             team = config["team"]
             real_name = config["real_name"]
             
-            if team == "ゲームマスター":
-                continue
-                
             if user_id not in participants or not participants[user_id].get("station"):
                 if team in unsubmitted_by_team:
                     unsubmitted_by_team[team].append(real_name)
@@ -239,8 +239,6 @@ async def on_message(message):
 
         msg = f"⏳ **未入力者（残り {total_unsubmitted} 人）:**\n"
         for team in TEAMS_ORDER:
-            if team == "ゲームマスター":
-                continue
             names = unsubmitted_by_team.get(team, [])
             if names:
                 msg += f"・【{team}チーム】: {', '.join(names)}\n"
@@ -248,8 +246,9 @@ async def on_message(message):
         await message.channel.send(msg.strip())
         return
 
-    # --- 通常処理: 駅名登録（受付中のみ） ---
-    if content in STATION_COORDINATES:
+    # --- 通常処理: 駅名登録 ---
+    raw_content = message.content.strip()
+    if raw_content in STATION_COORDINATES:
         if not is_accepting:
             await message.channel.send("❌ 現在は受付を停止しています。次のゲーム開始までお待ちください。")
             return
@@ -258,18 +257,16 @@ async def on_message(message):
         display_name = message.author.display_name
 
         participants[user_id] = {
-            "station": content,
+            "station": raw_content,
             "display_name": display_name
         }
-        await message.channel.send(f"✅ {message.author.mention} さんの駅を「{content}」で受け付けました！（現在 {len(participants)} 人）")
+        await message.channel.send(f"✅ {message.author.mention} さんの駅を「{raw_content}」で受け付けました！（現在 {len(participants)} 人）")
 
 
 # === 7. 起動処理 ===
 if __name__ == "__main__":
-    # Webサーバーを別スレッドで起動（UptimeRobot用）
     keep_alive()
     
-    # Discord Botを起動（トークン認証）
     TOKEN = os.getenv("DISCORD_BOT_TOKEN")
     if TOKEN:
         client.run(TOKEN)
