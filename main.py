@@ -219,8 +219,8 @@ async def on_message(message):
         await message.channel.send("🔄 今までの記録をリセットしました！1人目からの集計をやり直します。")
         return
 
-    # --- コマンド3: /left （未入力者リスト出力：ゲームマスターを含む全チーム対象） ---
-    if content == "/left":
+    # --- コマンド3: /remaining （未入力者リスト出力：ゲームマスターを含む全チーム対象） ---
+    if content == "/remaining":
         unsubmitted_by_team = {t: [] for t in TEAMS_ORDER}
         
         for user_id, config in USER_CONFIG.items():
