@@ -38,8 +38,6 @@ USER_CONFIG = {
     "1550112124930490400": {"team": "青", "real_name": "小澤"},
     "1550437565549649924": {"team": "青", "real_name": "伊藤"},
     "1341744353978355837": {"team": "青", "real_name": "高木"},
-    "1550403860768493630": {"team": "青", "real_name": "上山"},
-    
 
     # 白チーム
     "1534202522896699592": {"team": "白", "real_name": "猪狩"},
@@ -123,12 +121,18 @@ def _generate_map_image_sync(participants_data):
     for st_name, users in station_to_users.items():
         x = int(STATION_COORDINATES[st_name][0])
         y = int(STATION_COORDINATES[st_name][1])
-        pin_color = TEAM_COLORS["重複"] if len(users) > 1 else TEAM_COLORS.get(users[0]["team"], (255, 255, 255))
 
-        draw.ellipse((x - (scaled_radius + outline_extra), y - (scaled_radius + outline_extra), 
-                      x + (scaled_radius + outline_extra), y + (scaled_radius + outline_extra)), fill=(0, 0, 0))
-        draw.ellipse((x - scaled_radius, y - scaled_radius, x + scaled_radius, y + scaled_radius), fill=pin_color)
-        
+        # 通常プレイヤー（ゲームマスター以外）を抽出
+        player_users = [u for u in users if u['team'] != "ゲームマスター"]
+
+        # ピン（円）の描画: 通常プレイヤーが1人以上いる場合のみ描画（GM単独の場合はピンを押さない）
+        if player_users:
+            pin_color = TEAM_COLORS["重複"] if len(player_users) > 1 else TEAM_COLORS.get(player_users[0]["team"], (255, 255, 255))
+            draw.ellipse((x - (scaled_radius + outline_extra), y - (scaled_radius + outline_extra), 
+                          x + (scaled_radius + outline_extra), y + (scaled_radius + outline_extra)), fill=(0, 0, 0))
+            draw.ellipse((x - scaled_radius, y - scaled_radius, x + scaled_radius, y + scaled_radius), fill=pin_color)
+
+        # テキスト表示の組み立て
         team_summary = {t: [] for t in TEAMS_ORDER}
         for u in users:
             if u['team'] in team_summary:
@@ -137,7 +141,9 @@ def _generate_map_image_sync(participants_data):
         display_lines = []
         for t in TEAMS_ORDER:
             if team_summary.get(t):
-                line_txt = f"{t}:{ ''.join(team_summary[t]) }"
+                # チーム名表記の調整（ゲームマスターの場合は GM 表示）
+                label = "GM" if t == "ゲームマスター" else t
+                line_txt = f"{label}:{ ''.join(team_summary[t]) }"
                 display_lines.append((t, line_txt))
 
         current_y = y - scaled_radius
