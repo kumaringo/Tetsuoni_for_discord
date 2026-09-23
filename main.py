@@ -64,7 +64,7 @@ PIN_RADIUS = 6.5
 PIN_OUTLINE_WIDTH = 2
 
 # === 3. 環境変数と状態管理変数 ===
-REQUIRED_USERS = int(os.getenv("REQUIRED_USERS", "14"))
+REQUIRED_USERS = int(os.environ.get("REQUIRED_USERS", "14"))
 
 participants = {}    # 参加者の入力データ辞書
 is_accepting = True   # 受付フラグ
@@ -122,15 +122,11 @@ def _generate_map_image_sync(participants_data):
         x = int(STATION_COORDINATES[st_name][0])
         y = int(STATION_COORDINATES[st_name][1])
 
-        # 通常プレイヤー（ゲームマスター以外）を抽出
-        player_users = [u for u in users if u['team'] != "ゲームマスター"]
-
-        # ピン（円）の描画: 通常プレイヤーが1人以上いる場合のみ描画（GM単独の場合はピンを押さない）
-        if player_users:
-            pin_color = TEAM_COLORS["重複"] if len(player_users) > 1 else TEAM_COLORS.get(player_users[0]["team"], (255, 255, 255))
-            draw.ellipse((x - (scaled_radius + outline_extra), y - (scaled_radius + outline_extra), 
-                          x + (scaled_radius + outline_extra), y + (scaled_radius + outline_extra)), fill=(0, 0, 0))
-            draw.ellipse((x - scaled_radius, y - scaled_radius, x + scaled_radius, y + scaled_radius), fill=pin_color)
+        # ピン（円）の描画: GM含む全参加対象（2人以上重なれば黒色）
+        pin_color = TEAM_COLORS["重複"] if len(users) > 1 else TEAM_COLORS.get(users[0]["team"], (255, 255, 255))
+        draw.ellipse((x - (scaled_radius + outline_extra), y - (scaled_radius + outline_extra), 
+                      x + (scaled_radius + outline_extra), y + (scaled_radius + outline_extra)), fill=(0, 0, 0))
+        draw.ellipse((x - scaled_radius, y - scaled_radius, x + scaled_radius, y + scaled_radius), fill=pin_color)
 
         # テキスト表示の組み立て
         team_summary = {t: [] for t in TEAMS_ORDER}
@@ -141,7 +137,7 @@ def _generate_map_image_sync(participants_data):
         display_lines = []
         for t in TEAMS_ORDER:
             if team_summary.get(t):
-                # チーム名表記の調整（ゲームマスターの場合は GM 表示）
+                # チーム名表記の調整（ゲームマスターの場合は GM 表示にする）
                 label = "GM" if t == "ゲームマスター" else t
                 line_txt = f"{label}:{ ''.join(team_summary[t]) }"
                 display_lines.append((t, line_txt))
