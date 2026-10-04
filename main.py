@@ -55,8 +55,7 @@ TEAM_COLORS = {
     "赤": (255, 0, 0),
     "青": (0, 191, 255),
     "白": (255, 255, 255),
-    "ゲームマスター": (255, 255, 0),
-    "重複": (0, 0, 0)
+    "ゲームマスター": (255, 255, 0)
 }
 
 TEAMS_ORDER = ["赤", "青", "白", "ゲームマスター"]
@@ -124,13 +123,35 @@ def _generate_map_image_sync(participants_data):
         x = int(STATION_COORDINATES[st_name][0])
         y = int(STATION_COORDINATES[st_name][1])
 
-        # ピン（円）の描画: 全参加対象（2人以上重なれば黒色）
-        pin_color = TEAM_COLORS["重複"] if len(users) > 1 else TEAM_COLORS.get(users[0]["team"], (255, 255, 255))
-        draw.ellipse((x - (scaled_radius + outline_extra), y - (scaled_radius + outline_extra), 
-                      x + (scaled_radius + outline_extra), y + (scaled_radius + outline_extra)), fill=(0, 0, 0))
-        draw.ellipse((x - scaled_radius, y - scaled_radius, x + scaled_radius, y + scaled_radius), fill=pin_color)
+        # 重複チームの抽出（重複しないユニークなチームカラー順）
+        unique_teams = []
+        for u in users:
+            if u['team'] not in unique_teams and u['team'] in TEAM_COLORS:
+                unique_teams.append(u['team'])
 
-        # テキスト表示の組み立て
+        # 外枠（黒縁）を描画
+        draw.ellipse(
+            (x - (scaled_radius + outline_extra), y - (scaled_radius + outline_extra), 
+             x + (scaled_radius + outline_extra), y + (scaled_radius + outline_extra)), 
+            fill=(0, 0, 0)
+        )
+
+        # チーム数に応じた分割ピン（円）の描画
+        num_teams = len(unique_teams)
+        bbox = (x - scaled_radius, y - scaled_radius, x + scaled_radius, y + scaled_radius)
+
+        if num_teams == 1:
+            draw.ellipse(bbox, fill=TEAM_COLORS[unique_teams[0]])
+        elif num_teams > 1:
+            slice_angle = 360.0 / num_teams
+            # 視認しやすい開始角度（12時方向または90度方向など）
+            start_angle = -90.0
+            for i, t_name in enumerate(unique_teams):
+                end_angle = start_angle + slice_angle
+                draw.pieslice(bbox, start=start_angle, end=end_angle, fill=TEAM_COLORS[t_name])
+                start_angle = end_angle
+
+        # テキスト表示の組み立て（ピンの横に名前イニシャルを表示）
         team_summary = {t: [] for t in TEAMS_ORDER}
         for u in users:
             if u['team'] in team_summary:
@@ -139,7 +160,6 @@ def _generate_map_image_sync(participants_data):
         display_lines = []
         for t in TEAMS_ORDER:
             if team_summary.get(t):
-                # チーム名表記の調整（ゲームマスターの場合は GM 表示にする）
                 label = "GM" if t == "ゲームマスター" else t
                 line_txt = f"{label}:{ ''.join(team_summary[t]) }"
                 display_lines.append((t, line_txt))
@@ -183,7 +203,7 @@ async def send_map_with_pins(channel, participants_data):
         print("[INFO] 送信完了！")
 
     except Exception as e:
-        print(f"[ERROR] 描画・送信エラー: {e}")
+        print(f"[ERROR] 描画エラー: {e}")
         await channel.send(f"描画エラー: {e}")
 
 
@@ -225,7 +245,7 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # 全角スラッシュを半角にし、大文字を小文字に変換して前後空白を除去
+    # 全角スラッシュを半角にし、小文字化して前後空白を除去
     content = message.content.strip().replace("／", "/").lower()
 
     # --- コマンド: /gamemaster on / /gamemaster off ---
@@ -233,7 +253,6 @@ async def on_message(message):
         current_required_users = BASE_REQUIRED_USERS + 1
         await message.channel.send(f"👑 ゲームマスター参戦モードをONにしました。（規定人数: {BASE_REQUIRED_USERS} + 1 ➔ **{current_required_users} 人**）")
         
-        # モード切り替え時に既に人数を達成していた場合の自動完了チェック
         if len(participants) >= current_required_users:
             await finish_and_reset_game(message.channel, is_auto=True)
         return
@@ -242,7 +261,6 @@ async def on_message(message):
         current_required_users = BASE_REQUIRED_USERS
         await message.channel.send(f"👤 ゲームマスター参戦モードをOFFにしました。（規定人数: **{current_required_users} 人**）")
         
-        # モード切り替え時に既に人数を達成していた場合の自動完了チェック
         if len(participants) >= current_required_users:
             await finish_and_reset_game(message.channel, is_auto=True)
         return
@@ -308,9 +326,8 @@ async def on_message(message):
         # ユーザー設定を取得
         user_info = USER_CONFIG.get(user_id)
 
-        # 1. USER_CONFIG に存在しない、または有効チームリストに含まれない場合のチェック
+        # USER_CONFIG に存在しない、または有効チームリストに含まれない場合のチェック
         if not user_info or user_info["team"] not in active_teams:
-            # それがゲームマスターで OFF 状態の場合
             if user_info and user_info["team"] == "ゲームマスター":
                 await message.channel.send("⚠️ 現在ゲームマスター参戦モードはOFFです。ゲームマスターが入力する場合は `/gamemaster on` を実行してください。")
             else:
