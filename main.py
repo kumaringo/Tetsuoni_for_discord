@@ -107,7 +107,7 @@ def _generate_map_image_sync(participants_data):
             continue
 
         default_name = data.get("display_name", "ゲスト")
-        config = USER_CONFIG.get(str(user_id), {"team": "白", "real_name": default_name})
+        config = USER_CONFIG.get(str(user_id), {"team": "未登録", "real_name": default_name})
         team = config["team"]
         real_name = config["real_name"]
 
@@ -124,7 +124,7 @@ def _generate_map_image_sync(participants_data):
         x = int(STATION_COORDINATES[st_name][0])
         y = int(STATION_COORDINATES[st_name][1])
 
-        # ピン（円）の描画: GM含む全参加対象（2人以上重なれば黒色）
+        # ピン（円）の描画: 全参加対象（2人以上重なれば黒色）
         pin_color = TEAM_COLORS["重複"] if len(users) > 1 else TEAM_COLORS.get(users[0]["team"], (255, 255, 255))
         draw.ellipse((x - (scaled_radius + outline_extra), y - (scaled_radius + outline_extra), 
                       x + (scaled_radius + outline_extra), y + (scaled_radius + outline_extra)), fill=(0, 0, 0))
@@ -299,6 +299,23 @@ async def on_message(message):
 
         user_id = str(message.author.id)
         display_name = message.author.display_name
+        
+        # 現在有効なチームリストの判定
+        active_teams = ["赤", "青", "白"]
+        if current_required_users > BASE_REQUIRED_USERS:
+            active_teams.append("ゲームマスター")
+
+        # ユーザー設定を取得
+        user_info = USER_CONFIG.get(user_id)
+
+        # 1. USER_CONFIG に存在しない、または有効チームリストに含まれない場合のチェック
+        if not user_info or user_info["team"] not in active_teams:
+            # それがゲームマスターで OFF 状態の場合
+            if user_info and user_info["team"] == "ゲームマスター":
+                await message.channel.send("⚠️ 現在ゲームマスター参戦モードはOFFです。ゲームマスターが入力する場合は `/gamemaster on` を実行してください。")
+            else:
+                await message.channel.send("❌ あなたは参加者として登録されていません。")
+            return
 
         participants[user_id] = {
             "station": raw_content,
