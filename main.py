@@ -65,7 +65,8 @@ PIN_RADIUS = 6.5
 PIN_OUTLINE_WIDTH = 2
 
 # === 3. 環境変数と状態管理変数 ===
-REQUIRED_USERS = int(os.environ.get("REQUIRED_USERS", "14"))
+BASE_REQUIRED_USERS = int(os.environ.get("REQUIRED_USERS", "14")) # 環境変数の基本設定人数
+current_required_users = BASE_REQUIRED_USERS                      # 動的に変わる現在の規定人数
 
 participants = {}    # 参加者の入力データ辞書
 is_accepting = True   # 受付フラグ
@@ -188,14 +189,14 @@ async def send_map_with_pins(channel, participants_data):
 
 async def finish_and_reset_game(channel, is_auto=False):
     """手動(/finish)および自動(規定人数達成)で共通利用する終了・出力・リセット処理"""
-    global is_accepting, participants
+    global is_accepting, participants, current_required_users
 
     if not participants:
         await channel.send("⚠️ まだ入力データがありません。")
         return
 
     if is_auto:
-        await channel.send(f"🎉 規定人数の {REQUIRED_USERS} 人に達しました！マップを集計して出力します...")
+        await channel.send(f"🎉 規定人数の {current_required_users} 人に達しました！マップを集計して出力します...")
     else:
         await channel.send("🗺️ 手動指示によりマップを集計して出力します...")
 
@@ -215,17 +216,36 @@ client = discord.Client(intents=intents)
 @client.event
 async def on_ready():
     print(f"[INFO] ログインしました: {client.user}")
-    print(f"[INFO] 設定規定人数 (REQUIRED_USERS): {REQUIRED_USERS} 人")
+    print(f"[INFO] 設定規定人数 (REQUIRED_USERS): {BASE_REQUIRED_USERS} 人")
 
 @client.event
 async def on_message(message):
-    global is_accepting, participants
+    global is_accepting, participants, current_required_users
 
     if message.author.bot:
         return
 
     # 全角スラッシュを半角にし、大文字を小文字に変換して前後空白を除去
     content = message.content.strip().replace("／", "/").lower()
+
+    # --- コマンド: /gamemaster on / /gamemaster off ---
+    if content == "/gamemaster on":
+        current_required_users = BASE_REQUIRED_USERS + 1
+        await message.channel.send(f"👑 ゲームマスター参戦モードをONにしました。（規定人数: {BASE_REQUIRED_USERS} + 1 ➔ **{current_required_users} 人**）")
+        
+        # モード切り替え時に既に人数を達成していた場合の自動完了チェック
+        if len(participants) >= current_required_users:
+            await finish_and_reset_game(message.channel, is_auto=True)
+        return
+
+    if content == "/gamemaster off":
+        current_required_users = BASE_REQUIRED_USERS
+        await message.channel.send(f"👤 ゲームマスター参戦モードをOFFにしました。（規定人数: **{current_required_users} 人**）")
+        
+        # モード切り替え時に既に人数を達成していた場合の自動完了チェック
+        if len(participants) >= current_required_users:
+            await finish_and_reset_game(message.channel, is_auto=True)
+        return
 
     # --- コマンド1: /finish （手動でマップ出力＆リセット実行） ---
     if content == "/finish":
@@ -247,6 +267,10 @@ async def on_message(message):
             team = config["team"]
             real_name = config["real_name"]
             
+            # GM参戦モード（+1）でない場合、ゲームマスターチームは未入力者リストから除外
+            if current_required_users == BASE_REQUIRED_USERS and team == "ゲームマスター":
+                continue
+
             if user_id not in participants or not participants[user_id].get("station"):
                 if team in unsubmitted_by_team:
                     unsubmitted_by_team[team].append(real_name)
@@ -280,10 +304,10 @@ async def on_message(message):
             "station": raw_content,
             "display_name": display_name
         }
-        await message.channel.send(f"✅ {message.author.mention} さんの駅を「{raw_content}」で受け付けました！（現在 {len(participants)} / {REQUIRED_USERS} 人）")
+        await message.channel.send(f"✅ {message.author.mention} さんの駅を「{raw_content}」で受け付けました！（現在 {len(participants)} / {current_required_users} 人）")
 
-        # 条件（自動）: 規定人数（REQUIRED_USERS）に達したら自動でマップ出力＆リセット実行
-        if len(participants) >= REQUIRED_USERS:
+        # 条件（自動）: 規定人数（current_required_users）に達したら自動でマップ出力＆リセット実行
+        if len(participants) >= current_required_users:
             await finish_and_reset_game(message.channel, is_auto=True)
 
 
