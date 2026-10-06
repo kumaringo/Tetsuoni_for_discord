@@ -144,7 +144,6 @@ def _generate_map_image_sync(participants_data):
             draw.ellipse(bbox, fill=TEAM_COLORS[unique_teams[0]])
         elif num_teams > 1:
             slice_angle = 360.0 / num_teams
-            # 視認しやすい開始角度（12時方向または90度方向など）
             start_angle = -90.0
             for i, t_name in enumerate(unique_teams):
                 end_angle = start_angle + slice_angle
@@ -183,11 +182,39 @@ def _generate_map_image_sync(participants_data):
     img.save(out_buf, format='PNG', compress_level=1)
     out_buf.seek(0)
 
+    # --- 1. 入力者データのテキスト生成 ---
     total_users = sum(len(v) for v in report_buckets.values())
     report_text = f"🚨 参加者 {total_users} 人のデータ 🚨\n"
     for t in TEAMS_ORDER:
         if report_buckets.get(t):
             report_text += "\n" + "\n".join(report_buckets[t])
+
+    # --- 2. 未入力者の抽出処理（付随出力用） ---
+    unsubmitted_by_team = {t: [] for t in TEAMS_ORDER}
+    for u_id, config in USER_CONFIG.items():
+        team = config["team"]
+        real_name = config["real_name"]
+
+        # GM参戦モードでない場合、ゲームマスターチームは除外
+        if current_required_users == BASE_REQUIRED_USERS and team == "ゲームマスター":
+            continue
+
+        if u_id not in participants_data or not participants_data[u_id].get("station"):
+            if team in unsubmitted_by_team:
+                unsubmitted_by_team[team].append(real_name)
+
+    total_unsubmitted = sum(len(names) for names in unsubmitted_by_team.values())
+
+    # --- 3. 未入力者一覧テキストの追加 ---
+    report_text += "\n\n" + "─" * 20 + "\n"
+    if total_unsubmitted == 0:
+        report_text += "🎉 全員の入力が完了しています！"
+    else:
+        report_text += f"⏳ **未入力者（残り {total_unsubmitted} 人）:**\n"
+        for team in TEAMS_ORDER:
+            names = unsubmitted_by_team.get(team, [])
+            if names:
+                report_text += f"・【{team}チーム】: {', '.join(names)}\n"
 
     return out_buf, report_text.strip()
 
